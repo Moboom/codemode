@@ -17,10 +17,11 @@
 
   var getHtml = function() {
     var xhr = new XMLHttpRequest();
-    xhr.open(window.location.href +'html.json', true);
+    xhr.open('GET', window.location.href +'html.json', true);
     xhr.onreadystatechange = function(evt){
       if (this.readyState == 4 && this.status == 200) {
-        initCodeMode(this.responseText);
+        var res = JSON.parse(this.responseText);
+        initCodeMode(res.html);
       }
     };
     xhr.send();

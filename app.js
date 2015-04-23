@@ -16,22 +16,39 @@
 
 
   var getHtml = function() {
-    var ser = new XMLSerializer();
-    return ser.serializeToString(document);
+    var xhr = new XMLHttpRequest();
+    xhr.open(window.location.href +'html.json', true);
+    xhr.onreadystatechange = function(evt){
+      if (this.readyState == 4 && this.status == 200) {
+        initCodeMode(this.responseText);
+      }
+    };
+    xhr.send();
+
+    // var ser = new XMLSerializer();
+    // return ser.serializeToString(document);
   };
 
-
-
-  var codeMirror  = new CodeMirror(document.querySelector('#inspector'), {
-    mode:'htmlembedded',
-    lineNumbers: true,
-    extraKeys: {'Ctrl-Space':'autocomplete'},
-    value: getHtml()
-  });
-
-
-
+  var codeMirror;
   window.codeMirror = codeMirror;
+  function initCodeMode(html) {
+    codeMirror= new CodeMirror(document.querySelector('#inspector'), {
+      mode:'htmlembedded',
+      lineNumbers: true,
+      smartIndent: true,
+      indentUnit: 2,
+      indentWithTabs: false,
+      tabSize: 2,
+      extraKeys: {'Ctrl-Space':'autocomplete'},
+      value: html
+    });    
+  }
+
+
+
+
+  getHtml();
+  
 
   // debugger
 })();

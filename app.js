@@ -3,57 +3,43 @@
   'use strict';
   require('codemirror/mode/htmlembedded/htmlembedded');
   require('codemirror/addon/hint/show-hint');
-  // require('codemirror/addon/hint/html-hint');
-  // require('codemirror/addon/hint/javascript-hint');
-  // require('codemirror/addon/hint/anyword-hint');
   
-
-  var oldText = '<html></html>';
   var CodeMirror = require('codemirror');
-
+  var Parser = require('./lib/code-parser');
   require('./lib/moboom-hint')(CodeMirror);
+  var page = require('../test/fixtures/page-json.json');
 
-
-
-  var getHtml = function() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', window.location.href +'html.json', true);
-    xhr.onreadystatechange = function(evt){
-      if (this.readyState == 4 && this.status == 200) {
-        var res = JSON.parse(this.responseText);
-        initCodeMode(res.html);
-      }
-    };
-    xhr.send();
-
-    // var ser = new XMLSerializer();
-    // return ser.serializeToString(document);
+  CodeMirror.prototype.reindent = function() {
+    var size = this.doc.size;
+    while(size--) {
+      this.indentLine(size);
+    }
   };
 
   var codeMirror;
-  window.codeMirror = codeMirror;
+  
   function initCodeMode(html) {
-    codeMirror= new CodeMirror(document.querySelector('#inspector'), {
+    codeMirror = new CodeMirror(document.querySelector('#inspector'), {
       mode:'htmlembedded',
       lineNumbers: true,
       smartIndent: true,
       indentUnit: 2,
       indentWithTabs: false,
+      electricChars: true,
       tabSize: 2,
       extraKeys: {'Ctrl-Space':'autocomplete'},
       value: html
-    });    
+    });
+    
+    codeMirror.reindent();
+
+    window.codeMirror = codeMirror;
   }
+  initCodeMode(Parser.toMHTML(page));
 
 
-
-
-  getHtml();
-  
-
-  // debugger
 })();
-},{"./lib/moboom-hint":10,"codemirror":4,"codemirror/addon/hint/show-hint":2,"codemirror/mode/htmlembedded/htmlembedded":6}],2:[function(require,module,exports){
+},{"../test/fixtures/page-json.json":13,"./lib/code-parser":10,"./lib/moboom-hint":11,"codemirror":4,"codemirror/addon/hint/show-hint":2,"codemirror/mode/htmlembedded/htmlembedded":6}],2:[function(require,module,exports){
 // CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
@@ -11325,6 +11311,102 @@ if (!CodeMirror.mimeModes.hasOwnProperty("text/html"))
 });
 
 },{"../../lib/codemirror":4}],10:[function(require,module,exports){
+// http://base.moboom.com/cms/sites/95d6f08b-0d95-3e17-bae7-54d160bcfe9b/studio/4493e7c1-896d-83d9-f573-54d1602ed7f1
+
+var widgets = require('./widgets-map');
+
+/**
+ * CodeParser module
+ * @module CodeParser
+ */
+
+/**
+ * Append Stack
+ * @param  {Object} iWidget Widget Child
+ * @param  {Integer} i      index
+ * 
+ */
+var appendStack = function(iWidget, i) {
+  this.unshift(iWidget);
+};
+
+
+/**
+ * Render
+ * @param  {Object} widget      Moboom Widget content
+ * @param  {boolean} selfclose  autoclose it
+ * @return {String}             html string
+ */
+var render = function(widget, selfclose) {
+  var close = widget.__close;
+  var ending = selfclose ? '/>\n' : '>\n';
+  var type = widgets.find(widget.extension_id);
+
+  if (close) {
+    return '</' + type + '>\n';
+  }
+
+  // render the widget node
+  var html;
+  
+  html = '<' + type + ' class="'+widget.css_class+'" data-mb-settings="'+widget.settings+'"'+ending;
+
+  return html;
+  
+};
+
+/**
+ * toMHTML Parse JSON into Moboom-HTML
+ * @param  {Array} contents Array of JSON
+ * @return {String}          html String
+ * 
+ */
+var toMHTML = function(contents) {
+
+  var widget, content, hasChildren,
+      stack = contents, html = '';
+
+  while(stack.length) {
+    widget = stack.shift();
+
+    // close nodes with children and continue early
+    if (widget.__close) {
+      html += render(widget);
+      continue;
+    }
+    
+    content = widget.content;
+    hasChildren = content && content.length;
+
+    if (hasChildren) {
+      // rander current widget in queue
+      html += render(widget);
+
+      // prepend closing tag for widgets with children
+      // 
+      // every node must be closed
+      // we unshifting 0->[], 1->[0], 2->[1,0]
+      // and shifting to render 0<-[2,1], 1<-[2]
+      // all children will be prepended to stack thus
+      // we always have closing widget
+
+      widget.__close = true;
+      stack.unshift(widget);
+
+      // prepend children to the stack
+      content.forEach(appendStack, stack);
+    } else {
+      // render selfclosing(no children) widgets
+      html += render(widget, true);
+    }
+  }
+  return html;
+};
+
+module.exports = {
+  toMHTML: toMHTML
+};
+},{"./widgets-map":12}],11:[function(require,module,exports){
 // Moboom hint
 module.exports = function(CodeMirror) {
   "use strict";
@@ -11360,4 +11442,433 @@ module.exports = function(CodeMirror) {
 
   CodeMirror.registerHelper("hint", "anyword", MoboomHint);
 };
+},{}],12:[function(require,module,exports){
+// Assuming there're unique names
+// 
+// var idMap =  {};
+// a.forEach(function(ext){
+//   idMap[ext.id] = ''+ext.name.replace(/\s/g, '').toLowerCase();
+// });
+
+// var namesMap = {};
+// a.forEach(function(ext){
+//   namesMap[''+ext.name.replace(/\s/g, '').toLowerCase()] = ext.id;
+// });
+
+
+var idMap = {
+  "127b5481-914c-e630-b65a-5137ad7dfa5c": "richtext",
+  "1a0f481a-551a-2b73-9ae4-4fbc8ec9cb6c": "form",
+  "1bbabb1f-9575-962d-5325-51d4bc9004d5": "elasticslide",
+  "1e7b6b25-12f3-25be-214c-522cf4856238": "advancedshare",
+  "2037134f-5ce0-291b-d778-522cf44cc010": "advancedcarousel",
+  "2846e1e3-151e-ea87-70d4-503ec0ac9c54": "nielsensitecensus",
+  "29590723-6066-cdee-f412-51d70c5ecec4": "team",
+  "2c1a3c26-e453-6674-8fd1-522cf4321aa9": "advancedmap",
+  "2c54f557-b46d-f3c3-cbcb-51d5a97f89b1": "disqus",
+  "321317ea-a2dc-4faf-b391-5d5931cac834": "menu",
+  "3c8a0fb2-c657-4dc5-b4e4-28559fe90b77": "imagegallery",
+  "40b28857-a783-fc59-f158-4fbc8fdeaf8c": "heading",
+  "442731e2-2850-4b09-903f-9fd1030907cf": "youtube",
+  "4b7308ff-9d74-505f-05bc-4ffd0720e32e": "html",
+  "54aa41de-f9ca-403d-c780-50120dbf544b": "backlink",
+  "57f8d0d8-0ac1-f249-ac44-503ed88cdbfb": "doubleclickadbanner",
+  "72458176-bb44-cb0f-ae94-522cf4bc1eac": "blogroll",
+  "72d2faa0-17f9-7dfa-2a03-50eef929fa5a": "cssinclude",
+  "73700605-ee91-4cbe-a6d9-45d21b225c41": "responsivemenu",
+  "7abcf800-682c-40f5-9dca-18bff85bccc3": "searchresults",
+  "7dc0e7d0-46fc-47af-74bb-50ef1e36609e": "jsinclude",
+  "8fcfd630-618f-d675-b0e8-5035f0704231": "nativeappdownload",
+  "906a8031-c30e-0d32-19b2-4ffbd55ffac6": "phonenumber",
+  "910af2a8-000f-96d4-b539-535ef4d03530": "logo",
+  "91a42414-b0d7-2294-723f-4fbc8f2bdd62": "image",
+  "9d4fd690-a602-2e1c-109b-50d3b7befb52": "carousel",
+  "9e98bbc3-0cad-291e-1a1a-503ec04fc8c0": "googleanalytics",
+  "a4d10db4-1e66-33d5-70b2-51d4bd229dc7": "featureblock",
+  "a9562f63-c4da-23d6-955b-4ffcd18d5792": "number",
+  "ad2aaec7-6ba0-4784-93da-16e0bcdf843e": "container",
+  "ae7c14fe-4bcf-6eb2-d41a-52682dfc220b": "formconstructor",
+  "b2bdcab7-dc5d-9364-93ea-51d4bd74d525": "featuregrid",
+  "bb4aa7de-80b1-4c39-88a0-639414f92a4d": "share",
+  "c239f0e8-ddc1-bd85-efa2-51d4ba3ae4d4": "button",
+  "cc41c043-4614-4fb9-803d-a77c0e4f33c8": "map",
+  "cd2b751a-47c6-99de-4214-4fbc8e36effa": "link",
+  "d51405dc-27ac-4d71-edec-4ffcd495ae43": "listing",
+  "d9fda94f-8399-5b5e-f1ca-4fbc8c00cfa5": "text",
+  "dd4fed67-427d-613f-691a-522cf4f5ea81": "advancedsocialnetworks",
+  "dfe1fec9-2d8a-d210-c0eb-537e4e0a5586": "hr",
+  "e915486d-51b0-77de-c1c6-4fbc932bbed5": "searchbox",
+  "f5be4381-41ba-4cea-ac7c-ece6a47519a4": "pageelement",
+  "fc07aab6-76a8-40bc-88b9-8ae81ddf8277": "browse",
+  "fd2ff58d-5204-4778-9f54-80295d7283df": "advancedsearch"
+};
+
+var namesMap = {
+  "richtext": "127b5481-914c-e630-b65a-5137ad7dfa5c",
+  "form": "1a0f481a-551a-2b73-9ae4-4fbc8ec9cb6c",
+  "elasticslide": "1bbabb1f-9575-962d-5325-51d4bc9004d5",
+  "advancedshare": "1e7b6b25-12f3-25be-214c-522cf4856238",
+  "advancedcarousel": "2037134f-5ce0-291b-d778-522cf44cc010",
+  "nielsensitecensus": "2846e1e3-151e-ea87-70d4-503ec0ac9c54",
+  "team": "29590723-6066-cdee-f412-51d70c5ecec4",
+  "advancedmap": "2c1a3c26-e453-6674-8fd1-522cf4321aa9",
+  "disqus": "2c54f557-b46d-f3c3-cbcb-51d5a97f89b1",
+  "menu": "321317ea-a2dc-4faf-b391-5d5931cac834",
+  "imagegallery": "3c8a0fb2-c657-4dc5-b4e4-28559fe90b77",
+  "heading": "40b28857-a783-fc59-f158-4fbc8fdeaf8c",
+  "youtube": "442731e2-2850-4b09-903f-9fd1030907cf",
+  "html": "4b7308ff-9d74-505f-05bc-4ffd0720e32e",
+  "backlink": "54aa41de-f9ca-403d-c780-50120dbf544b",
+  "doubleclickadbanner": "57f8d0d8-0ac1-f249-ac44-503ed88cdbfb",
+  "blogroll": "72458176-bb44-cb0f-ae94-522cf4bc1eac",
+  "cssinclude": "72d2faa0-17f9-7dfa-2a03-50eef929fa5a",
+  "responsivemenu": "73700605-ee91-4cbe-a6d9-45d21b225c41",
+  "searchresults": "7abcf800-682c-40f5-9dca-18bff85bccc3",
+  "jsinclude": "7dc0e7d0-46fc-47af-74bb-50ef1e36609e",
+  "nativeappdownload": "8fcfd630-618f-d675-b0e8-5035f0704231",
+  "phonenumber": "906a8031-c30e-0d32-19b2-4ffbd55ffac6",
+  "logo": "910af2a8-000f-96d4-b539-535ef4d03530",
+  "image": "91a42414-b0d7-2294-723f-4fbc8f2bdd62",
+  "carousel": "9d4fd690-a602-2e1c-109b-50d3b7befb52",
+  "googleanalytics": "9e98bbc3-0cad-291e-1a1a-503ec04fc8c0",
+  "featureblock": "a4d10db4-1e66-33d5-70b2-51d4bd229dc7",
+  "number": "a9562f63-c4da-23d6-955b-4ffcd18d5792",
+  "container": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+  "formconstructor": "ae7c14fe-4bcf-6eb2-d41a-52682dfc220b",
+  "featuregrid": "b2bdcab7-dc5d-9364-93ea-51d4bd74d525",
+  "share": "bb4aa7de-80b1-4c39-88a0-639414f92a4d",
+  "button": "c239f0e8-ddc1-bd85-efa2-51d4ba3ae4d4",
+  "map": "cc41c043-4614-4fb9-803d-a77c0e4f33c8",
+  "link": "cd2b751a-47c6-99de-4214-4fbc8e36effa",
+  "listing": "d51405dc-27ac-4d71-edec-4ffcd495ae43",
+  "text": "d9fda94f-8399-5b5e-f1ca-4fbc8c00cfa5",
+  "advancedsocialnetworks": "dd4fed67-427d-613f-691a-522cf4f5ea81",
+  "hr": "dfe1fec9-2d8a-d210-c0eb-537e4e0a5586",
+  "searchbox": "e915486d-51b0-77de-c1c6-4fbc932bbed5",
+  "pageelement": "f5be4381-41ba-4cea-ac7c-ece6a47519a4",
+  "browse": "fc07aab6-76a8-40bc-88b9-8ae81ddf8277",
+  "advancedsearch": "fd2ff58d-5204-4778-9f54-80295d7283df"
+};
+
+
+prepareName = function(name) {
+  return ''+name.replace(/\s/g, '').toLowerCase();
+};
+
+find = function(key, byName) {
+  if (byName) {
+    key = prepareName(key);
+    return namesMap[key];
+  }
+  return idMap[key];
+};
+
+module.exports = {
+  find: find
+};
+},{}],13:[function(require,module,exports){
+module.exports=[
+  {
+    "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+    "name": "Container",
+    "type": "div",
+    "container": true,
+    "content": [
+      {
+        "container": true,
+        "css_class": "span12",
+        "css_id": null,
+        "css_style": null,
+        "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+        "name": "Container",
+        "type": "div",
+        "sort_order": 0,
+        "settings": [],
+        "content": [
+          {
+            "container": false,
+            "css_class": "",
+            "css_id": "MOB438290b016",
+            "css_style": null,
+            "extension_id": "2037134f-5ce0-291b-d778-522cf44cc010",
+            "initialized": true,
+            "invisible": false,
+            "name": "Advanced Carousel",
+            "type": "widget",
+            "server_module_id": null,
+            "sort_order": 0,
+            "settings": {
+              "heroSet": [
+                {
+                  "image": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:slider[].image]]",
+                  "title": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:slider[].title]]",
+                  "description": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:slider[].description]]",
+                  "link": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:slider[].link.url]]",
+                  "linkName": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:slider[].link.title]]"
+                }
+              ]
+            },
+            "version": "1.0.0",
+            "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+            "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+            "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+            "instance_id": "44a14da4-a441-02db-385a-54d16022e11b",
+            "scale": "0.897"
+          }
+        ],
+        "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+        "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+        "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+        "scale": "0.897"
+      }
+    ],
+    "sort_order": 0,
+    "settings": [],
+    "css_id": null,
+    "css_class": "row-fluid",
+    "css_style": null,
+    "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+    "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+    "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+    "scale": "0.897"
+  },
+  {
+    "container": true,
+    "css_class": "row-fluid",
+    "css_id": null,
+    "css_style": null,
+    "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+    "name": "Container",
+    "type": "div",
+    "sort_order": 1,
+    "settings": [],
+    "content": [
+      {
+        "container": true,
+        "css_class": "span12",
+        "css_id": null,
+        "css_style": null,
+        "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+        "name": "Container",
+        "type": "div",
+        "sort_order": 0,
+        "settings": [],
+        "content": [
+          {
+            "container": false,
+            "css_class": "center",
+            "css_id": null,
+            "css_style": null,
+            "extension_id": "40b28857-a783-fc59-f158-4fbc8fdeaf8c",
+            "initialized": true,
+            "invisible": false,
+            "name": "Heading",
+            "type": "widget",
+            "server_module_id": null,
+            "sort_order": 0,
+            "settings": {
+              "text": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:headline]]",
+              "level": "2"
+            },
+            "version": "1.0.0",
+            "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+            "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+            "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+            "instance_id": "44a47d76-1029-cb72-ef23-54d1607cf044",
+            "scale": "0.897"
+          },
+          {
+            "container": false,
+            "css_class": "",
+            "css_id": null,
+            "css_style": null,
+            "extension_id": "dfe1fec9-2d8a-d210-c0eb-537e4e0a5586",
+            "initialized": true,
+            "invisible": false,
+            "name": "HR",
+            "type": "widget",
+            "server_module_id": null,
+            "sort_order": 1,
+            "settings": {
+              "type": "none"
+            },
+            "version": "1.0.0",
+            "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+            "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+            "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+            "instance_id": "44a6a826-a022-901e-9dae-54d160f5ba01",
+            "scale": "0.897"
+          }
+        ],
+        "scale": "0.897",
+        "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+        "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+        "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337"
+      }
+    ],
+    "scale": "0.897",
+    "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+    "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+    "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337"
+  },
+  {
+    "container": true,
+    "css_class": "row-fluid",
+    "css_id": null,
+    "css_style": null,
+    "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+    "name": "Container",
+    "type": "div",
+    "sort_order": 2,
+    "settings": [],
+    "content": [
+      {
+        "container": true,
+        "css_class": "span12",
+        "css_id": null,
+        "css_style": null,
+        "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+        "name": "Container",
+        "type": "div",
+        "sort_order": 0,
+        "settings": [],
+        "content": [
+          {
+            "container": false,
+            "css_class": "margin-bottom",
+            "css_id": null,
+            "css_style": null,
+            "extension_id": "1bbabb1f-9575-962d-5325-51d4bc9004d5",
+            "initialized": true,
+            "invisible": false,
+            "name": "ElasticSlide",
+            "type": "widget",
+            "sort_order": 0,
+            "settings": {
+              "es_items": [
+                {
+                  "image": "[[c:7bbe667f-c13e-48ee-bd84-54d16086dcd1:image]]",
+                  "link": "/port-item?id=[[c:7bbe667f-c13e-48ee-bd84-54d16086dcd1:_id]]"
+                }
+              ],
+              "orientation": "horizontal"
+            },
+            "version": "1.0.0",
+            "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+            "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+            "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+            "instance_id": "44a990b1-ceba-7b29-3905-54d160b5401e",
+            "scale": "0.897",
+            "context": "q=home-page-featured-item:yes"
+          }
+        ],
+        "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+        "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+        "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+        "scale": "0.897"
+      }
+    ],
+    "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+    "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+    "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+    "scale": "0.897"
+  },
+  {
+    "container": true,
+    "css_class": "row-fluid",
+    "css_id": null,
+    "css_style": null,
+    "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+    "name": "Container",
+    "type": "div",
+    "sort_order": 3,
+    "settings": [],
+    "content": [
+      {
+        "container": true,
+        "css_class": "offset2 span8",
+        "css_id": null,
+        "css_style": null,
+        "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+        "name": "Container",
+        "type": "div",
+        "sort_order": 0,
+        "settings": [],
+        "content": [
+          {
+            "container": false,
+            "css_class": "",
+            "css_id": null,
+            "css_style": null,
+            "extension_id": "d9fda94f-8399-5b5e-f1ca-4fbc8c00cfa5",
+            "initialized": true,
+            "invisible": false,
+            "name": "Text",
+            "type": "widget",
+            "server_module_id": null,
+            "sort_order": 0,
+            "settings": {
+              "text": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:description]]"
+            },
+            "version": "1.0.0",
+            "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+            "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+            "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+            "instance_id": "44ac7ab7-99f4-c116-6e14-54d160f26ecf",
+            "scale": "0.592"
+          },
+          {
+            "container": false,
+            "css_class": "center margin-bottom",
+            "css_id": null,
+            "css_style": null,
+            "extension_id": "c239f0e8-ddc1-bd85-efa2-51d4ba3ae4d4",
+            "initialized": true,
+            "invisible": false,
+            "name": "Button",
+            "type": "widget",
+            "sort_order": 1,
+            "settings": {
+              "button_type": "1",
+              "button_size": "1",
+              "button_style": "1",
+              "text": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:link.title]]",
+              "link": "[[c:3c4065a0-2a1e-feac-3f76-54d160f95472:link.url]]"
+            },
+            "version": "1.0.0",
+            "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+            "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+            "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+            "instance_id": "44ae9f12-1290-29b6-c496-54d160ebd738",
+            "scale": "0.592"
+          }
+        ],
+        "scale": "0.592",
+        "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+        "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+        "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337"
+      }
+    ],
+    "scale": "0.897",
+    "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+    "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+    "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337"
+  },
+  {
+    "container": true,
+    "css_class": "",
+    "css_id": null,
+    "css_style": null,
+    "extension_id": "ad2aaec7-6ba0-4784-93da-16e0bcdf843e",
+    "name": "Container",
+    "type": "div",
+    "sort_order": 4,
+    "settings": [],
+    "content": [],
+    "page_id": "4493e7c1-896d-83d9-f573-54d1602ed7f1",
+    "site_id": "95d6f08b-0d95-3e17-bae7-54d160bcfe9b",
+    "site_collection_id": "80e5a364-e127-388f-ad62-5436aa5d5337",
+    "scale": "0.897"
+  }
+]
 },{}]},{},[1]);
